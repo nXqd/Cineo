@@ -1,11 +1,8 @@
 from boa.interop.Neo.Storage import GetContext, Put, Get
-PRODUCT_HASH = 'bd65600d-8669-4903-8a14-af88203add38'
+BUYER_LIST_HASH = '9b8d4bd7-8f2d-426f-a232-e427a691df88'
 
 def Main(operation, args):
     if operation != None:
-        if operation == 'UpdateMovieListHash':
-            Put(GetContext(), PRODUCT_HASH, args[0])
+        if operation == 'UpdateBuyerList':
+            Put(GetContext(), BUYER_LIST_HASH, args[0])
             return True
-
-        if operation == 'GetMovieListHash':
-            return Get(GetContext(), PRODUCT_HASH)

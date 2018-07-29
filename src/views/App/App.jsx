@@ -14,7 +14,7 @@ import {
   Col,
   Navbar,
   NavbarBrand,
-  Jumbotron, 
+  Jumbotron,
   Badge
 } from "reactstrap";
 
@@ -61,15 +61,16 @@ const styles = {
   },
   Header: {
     backgroundColor: "#7BB92B"
-    }
+  }
 };
 
-const movieTicketPriceInNEO = 0.2;
+const movieTicketPriceInGAS = 1;
 const movieTicketShopAddress = "AaWDqC1ToUyEHKix6yCuPWUPSSi3bYesiD";
 
-const scriptHash = "2b108cf8a0bde49c31365697b985128b45cce3cf";
-const key = "0cb567c9-6ea7-4235-8500-ce6aff648fb7";
-const getStorage = { scriptHash, key };
+// TODO: Remember to change this script hash
+const scriptHash = "dd2ea6ec34b5dd5163cb7d6b951592a34e197961";
+const BUYER_LIST_HASH = "9b8d4bd7-8f2d-426f-a232-e427a691df88";
+const buyerListHash = { scriptHash, BUYER_LIST_HASH };
 
 const dataIPFS = [];
 /* const dataIPFS = [
@@ -340,7 +341,7 @@ class MovieCard extends Component {
 
     return (
       <Col key={movie.id} sm="3">
-        <Card key={movie.id} onClick={() => this.props.app.setState({curmovie: movie})}>
+        <Card key={movie.id} onClick={() => this.props.app.setState({ currentMovie: movie })}>
           <CardImg
             top
             width="200px"
@@ -349,11 +350,17 @@ class MovieCard extends Component {
             href={`/movie/${movie.id}`}
           />
           <CardBody style={{ height: "120px" }}>
-            <CardTitle><h3>{movie.title}</h3></CardTitle>
-            <CardSubtitle>
-            </CardSubtitle>
+            <CardTitle>
+              <h3>{movie.title}</h3>
+            </CardTitle>
+            <CardSubtitle />
             <center>
-              <Button color="success" onClick={() => this.props.app.setState({curmovie: movie})}>View Details</Button>
+              <Button
+                color="success"
+                onClick={() => this.props.app.setState({ currentMovie: movie })}
+              >
+                View Details
+              </Button>
             </center>
           </CardBody>
         </Card>
@@ -362,14 +369,13 @@ class MovieCard extends Component {
   }
 }
 
-
 class App extends Component {
   constructor(props) {
     super(props);
     this.state = {
       movies: [],
       movieMap: {},
-      curmovie: {}
+      currentMovie: {}
     };
   }
 
@@ -389,7 +395,7 @@ class App extends Component {
         return map;
       }, {});
 
-      self.setState({ movies, movieMap: moMap , curmovie: movies[0] });
+      self.setState({ movies, movieMap: moMap, currentMovie: movies[0] });
       console.log(`movieMap in Didmount ${self.state.movieMap}`);
     });
   }
@@ -398,10 +404,12 @@ class App extends Component {
     const NEO = "c56f33fc6ecfcd0c225c4ab356fee59390af8560be0e930faebe74a6daff7c9b";
 
     console.log("Get user balance");
-    nos.getAddress().then(address => {
+    nos
+      .getAddress()
+      .then(address => {
         nos
-        .getBalance({ asset: NEO })
-        .then(balance => {
+          .getBalance({ asset: NEO })
+          .then(balance => {
             console.log(`Balance ${balance}`);
           })
           .catch(err => {
@@ -458,27 +466,71 @@ class App extends Component {
       .catch(err => alert(`Error: ${err.message}`));
   }
 
+  // Store buyer list to ipfs and update NEO storage
+  storeBuyers(purchasers, nos, successFn) {
+    ipfsConnection.add(new Buffer(JSON.stringify(purchasers)), (err, res) => {
+      if (err || !res) {
+        return console.error("Error while getting data from ipfs", err, res);
+      }
+
+      const newDataHash = res[0].hash;
+      const args = [newDataHash];
+
+        nos
+            .invoke({ scriptHash, operation: 'UpdateBuyerList', args })
+            .then(txid => {
+                successFn();
+            })
+            .catch(err => console.log(`Error: ${err.message}`));
+    });
+  }
+
   buyTicket(nos) {
     const self = this;
-    const NEO = "c56f33fc6ecfcd0c225c4ab356fee59390af8560be0e930faebe74a6daff7c9b";
-
-    // check
+    const GAS = "602c79718b16e442de58778e148d0b1084e3b2dffd5de6b7b16cee7969282de7";
 
     nos
       .getAddress()
-      .then(address => {
+      .then(currentUserNEOAddress => {
         nos
-          .getBalance({ asset: NEO })
+          .getBalance({ asset: GAS })
           .then(balance => {
             console.log(`Balance ${balance}`);
-            if (balance >= movieTicketPriceInNEO) {
+            if (balance >= movieTicketPriceInGAS) {
               this.props.nos
                 .send({
-                  asset: NEO,
-                  amount: movieTicketPriceInNEO,
+                  asset: GAS,
+                  amount: movieTicketPriceInGAS,
                   receiver: movieTicketShopAddress
                 })
-                .then(() => {})
+                .then(() => {
+                  // store purchaser's data
+                  nos
+                    .getStorage(buyerListHash)
+                    .then(async dataHash => {
+                      ipfsConnection.get(dataHash, (err, res) => {
+                        if (err || !res)
+                          return console.error("Error while getting data from ipfs", err, res);
+
+                        let buyers = JSON.parse(res[0].content.toString("utf8"));
+                        buyers.push({
+                          address: currentUserNEOAddress,
+                          movieId: self.state.currentMovie.id
+                        });
+
+                        // update smart contract storage
+                          this.storeBuyers(buyers, nos, function() {
+                            alert("Thanks for booking the movie ticket!")
+                          })
+                      });
+                    })
+                    .catch(err => {
+                      alert(
+                        "There is something wrong with the server. We will get back to you as soon as possible."
+                      );
+                      console.log(`Cannot get storage from NEO, error:${err}`);
+                    });
+                })
                 .catch(() => {
                   ToastStore.error("Purchase Failed");
                   // self.history.push('/');
@@ -490,7 +542,7 @@ class App extends Component {
           .catch(err => {
             console.log(`Error while getting user's balance ${err}`);
           });
-        console.log(`User address${address}`);
+        console.log(`User address${currentUserNEOAddress}`);
       })
       .catch(err => {
         console.log("Cannot get user Address");
@@ -498,14 +550,14 @@ class App extends Component {
   }
 
   render() {
-    console.log("render HomePage  " + this.props.nos.exists)
+    console.log(`render HomePage  ${this.props.nos.exists}`);
     if (!this.props.nos.exists) {
       return null;
     }
 
     const movies = this.state.movies;
 
-    console.log("movies in render " + movies);
+    console.log(`movies in render ${movies}`);
     if (movies === undefined || movies.length === 0) return null;
 
     console.log("render after movies checking");
@@ -520,53 +572,56 @@ class App extends Component {
 
     return (
       <React.Fragment>
-      <div>
+        <div>
           <div>
             <Navbar color="dark" dark expand="md">
               <NavbarBrand href="/">Cineo: Buy movie tickets with NEO tokens</NavbarBrand>
             </Navbar>
           </div>
 
-        <center>
-          <YouTube videoId={this.state.curmovie.videoId} opts={opts} onReady={this._onReady} />
+          <center>
+            <YouTube
+              videoId={this.state.currentMovie.videoId}
+              opts={opts}
+              onReady={this._onReady}
+            />
 
-          <Jumbotron>
-            <h1 className="display-3">{this.state.curmovie.title}</h1>
-            <p className="lead">{this.state.curmovie.storyline}</p>
-            <hr className="my-2" />
-            <p>Actors :  
-            {this.state.curmovie.actors.map((actor) => {
-                return `${actor} | `;
-            })}
-            </p>
-            <p>
-              <Badge color="warning">IMDB {this.state.curmovie.imdbRating}</Badge> &nbsp;
-              <Badge color="warning">YEAR {this.state.curmovie.year}</Badge> &nbsp;
-            </p>
-            <p>
-              <Badge color="primary">PRICE {movieTicketPriceInNEO} NEO</Badge>
-            </p>
-            <p className="lead">
-              <Button color="success" onClick={() => this.buyTicket(this.props.nos)}>
-                Buy Ticket
-              </Button>
-            </p>
-          </Jumbotron>
-        </center>
+            <Jumbotron>
+              <h1 className="display-3">{this.state.currentMovie.title}</h1>
+              <p className="lead">{this.state.currentMovie.storyline}</p>
+              <hr className="my-2" />
+              <p>
+                Actors :
+                {this.state.currentMovie.actors.map(actor => `${actor} | `)}
+              </p>
+              <p>
+                <Badge color="warning">IMDB {this.state.currentMovie.imdbRating}</Badge> &nbsp;
+                <Badge color="warning">YEAR {this.state.currentMovie.year}</Badge> &nbsp;
+              </p>
+              <p>
+                <Badge color="primary">PRICE {movieTicketPriceInGAS} NEO</Badge>
+              </p>
+              <p className="lead">
+                <Button color="success" onClick={() => this.buyTicket(this.props.nos)}>
+                  Buy Ticket
+                </Button>
+              </p>
+            </Jumbotron>
+          </center>
 
-        <div>
-          <Row>
-            {movies.map((movie) => {
-              console.log("movie in loop " + movie);
-              if (movie) {
-                return <MovieCard movie={movie} key={movie.id + movie.title} app={this} />;
-              }
-            })}
-          </Row>
-      </div>
-    </div>
-    </React.Fragment>
-    )
+          <div>
+            <Row>
+              {movies.map(movie => {
+                console.log(`movie in loop ${movie}`);
+                if (movie) {
+                  return <MovieCard movie={movie} key={movie.id + movie.title} app={this} />;
+                }
+              })}
+            </Row>
+          </div>
+        </div>
+      </React.Fragment>
+    );
   }
 }
 
