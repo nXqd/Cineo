@@ -447,7 +447,7 @@ class App extends Component {
     const receiver = "Ab3r25fyfSc2erW4TjeZmNAkMMJx3pJPJv";
     const NEO = "c56f33fc6ecfcd0c225c4ab356fee59390af8560be0e930faebe74a6daff7c9b";
     this.props.nos
-      .send({ asset: NEO, amount: 0.5, receiver })
+      .send({ asset: NEO, amount: 1, receiver })
       .then(() => {
         console.log("send successfully");
       })
@@ -575,7 +575,7 @@ class App extends Component {
         <div>
           <div>
             <Navbar color="dark" dark expand="md">
-              <NavbarBrand href="/">Cineo: Buy movie tickets with NEO tokens</NavbarBrand>
+              <NavbarBrand href="/">Cineo: Buy movie tickets with NEO</NavbarBrand>
             </Navbar>
           </div>
 
@@ -599,7 +599,7 @@ class App extends Component {
                 <Badge color="warning">YEAR {this.state.currentMovie.year}</Badge> &nbsp;
               </p>
               <p>
-                <Badge color="primary">PRICE {movieTicketPriceInGAS} NEO</Badge>
+                <Badge color="primary">PRICE {movieTicketPriceInGAS} GAS</Badge>
               </p>
               <p className="lead">
                 <Button color="success" onClick={() => this.buyTicket(this.props.nos)}>
