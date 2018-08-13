@@ -65,7 +65,7 @@ const styles = {
 };
 
 const movieTicketPriceInGAS = 1;
-const movieTicketShopAddress = "AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y";
+const movieTicketShopAddress = "AaWDqC1ToUyEHKix6yCuPWUPSSi3bYesiD";
 
 // TODO: Remember to change this script hash
 // dd2ea6ec34b5dd5163cb7d6b951592a34e197961
