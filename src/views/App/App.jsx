@@ -65,12 +65,13 @@ const styles = {
 };
 
 const movieTicketPriceInGAS = 1;
-const movieTicketShopAddress = "AaWDqC1ToUyEHKix6yCuPWUPSSi3bYesiD";
+const movieTicketShopAddress = "AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y";
 
 // TODO: Remember to change this script hash
+// dd2ea6ec34b5dd5163cb7d6b951592a34e197961
 const scriptHash = "dd2ea6ec34b5dd5163cb7d6b951592a34e197961";
 const BUYER_LIST_HASH = "9b8d4bd7-8f2d-426f-a232-e427a691df88";
-const buyerListHash = { scriptHash, BUYER_LIST_HASH };
+const buyerListHash = { scriptHash, key: BUYER_LIST_HASH };
 
 const dataIPFS = [];
 /* const dataIPFS = [
@@ -333,15 +334,18 @@ const dataIPFS = [];
   }
 ]; */
 
-const fixedPrice = 0.2;
-
 class MovieCard extends Component {
+  changeMovie(app, movie) {
+    app.setState({ currentMovie: movie });
+    app.setCurrentUserTickets(app, movie);
+  }
+
   render() {
     const { movie } = this.props;
 
     return (
       <Col key={movie.id} sm="3">
-        <Card key={movie.id} onClick={() => this.props.app.setState({ currentMovie: movie })}>
+        <Card key={movie.id} onClick={() => this.changeMovie(this.props.app, movie)}>
           <CardImg
             top
             width="200px"
@@ -355,10 +359,7 @@ class MovieCard extends Component {
             </CardTitle>
             <CardSubtitle />
             <center>
-              <Button
-                color="success"
-                onClick={() => this.props.app.setState({ currentMovie: movie })}
-              >
+              <Button color="success" onClick={() => this.changeMovie(this.props.app, movie)}>
                 View Details
               </Button>
             </center>
@@ -373,10 +374,74 @@ class App extends Component {
   constructor(props) {
     super(props);
     this.state = {
+      currentUserAddress: null,
       movies: [],
       movieMap: {},
-      currentMovie: {}
+      currentMovie: null
     };
+  }
+
+  setCurrentUserAddress(_this, fn) {
+    const self = _this;
+
+    _this.props.nos
+      .getAddress()
+      .then(address => {
+        self.setState({ currentUserAddress: address });
+        if (fn !== undefined) {
+          fn(address);
+        }
+        console.log(`User address${address}`);
+      })
+      .catch(err => {
+        console.log(`Cannot get user Address ${err}`);
+      });
+  }
+
+  setCurrentUserTickets(_this, currentMovie) {
+    const self = _this;
+    console.log(`current movie id ${currentMovie.id}`);
+    _this.setCurrentUserAddress(_this, currentUserAddress => {
+      console.log(`setCurrentUserTickets node ${self.props.nos}`);
+
+      self.props.nos
+        .getStorage(buyerListHash)
+        .then(async dataHash => {
+          // {addres: [{address, movieId, timeStamp}, {address,movieId, timeStamp}]}
+          // currentUserBoughtTickets = []
+          // currentUserBoughtTickets.filter((x) => x.movieId === currentMovie).count -> You have bought ${count} tickets of this movie.
+          // mvies[address] = [{newBuyer}]
+          // movies[addres].push(newBuyer)
+
+          ipfsConnection.get(dataHash, (err, res) => {
+            if (err || !res) return console.error("Error while getting data from ipfs", err, res);
+
+            const buyers = JSON.parse(res[0].content.toString("utf8"));
+            console.log(`Buyers didmount ${JSON.stringify(buyers, null, 4)}`);
+
+            const currentUserBoughtTickets = buyers[currentUserAddress];
+            console.log(`tickets ${JSON.stringify(currentUserBoughtTickets, null, 4)}`);
+
+            if (typeof currentUserBoughtTickets !== "undefined") {
+              console.log(`currentMovie ${JSON.stringify(currentMovie, null, 4)}`);
+              const currentTicketBoughtCount = currentUserBoughtTickets.filter(
+                x => x.movieId === currentMovie.id
+              ).length;
+
+              console.log(`tickets ${JSON.stringify(currentTicketBoughtCount, null, 4)}`);
+
+              self.setState({ currentUserBoughtTickets, currentTicketBoughtCount });
+            } else {
+              self.setState({ currentUserBoughtTickets: [], currentTicketBoughtCount: 0 });
+            }
+          });
+        })
+        .catch(err => {
+          const currentUserBoughtTickets = [];
+          self.setState({ currentUserBoughtTickets, currentTicketBoughtCount: 0 });
+          console.log(`Cannot get storage ${err}`);
+        });
+    });
   }
 
   componentDidMount() {
@@ -386,6 +451,8 @@ class App extends Component {
     // const dataHash = this.props.dataHash;
 
     const self = this;
+    // get buyers -> get buyers[currentUserNEOAddress]
+
     ipfsConnection.get(dataHash, (err, response) => {
       const movies = JSON.parse(response[0].content.toString("utf8"));
       console.log(`movies in didMount ${movies}`);
@@ -395,7 +462,9 @@ class App extends Component {
         return map;
       }, {});
 
-      self.setState({ movies, movieMap: moMap, currentMovie: movies[0] });
+      const currentMovie = movies[0];
+      self.setState({ movies, movieMap: moMap, currentMovie });
+
       console.log(`movieMap in Didmount ${self.state.movieMap}`);
     });
   }
@@ -447,7 +516,7 @@ class App extends Component {
     const receiver = "Ab3r25fyfSc2erW4TjeZmNAkMMJx3pJPJv";
     const NEO = "c56f33fc6ecfcd0c225c4ab356fee59390af8560be0e930faebe74a6daff7c9b";
     this.props.nos
-      .send({ asset: NEO, amount: 1, receiver })
+      .send({ asset: NEO, amount: 0.5, receiver })
       .then(() => {
         console.log("send successfully");
       })
@@ -476,12 +545,12 @@ class App extends Component {
       const newDataHash = res[0].hash;
       const args = [newDataHash];
 
-        nos
-            .invoke({ scriptHash, operation: 'UpdateBuyerList', args })
-            .then(txid => {
-                successFn();
-            })
-            .catch(err => console.log(`Error: ${err.message}`));
+      nos
+        .invoke({ scriptHash, operation: "UpdateBuyerList", args })
+        .then(txid => {
+          successFn();
+        })
+        .catch(err => console.log(`Error: ${err.message}`));
     });
   }
 
@@ -489,70 +558,105 @@ class App extends Component {
     const self = this;
     const GAS = "602c79718b16e442de58778e148d0b1084e3b2dffd5de6b7b16cee7969282de7";
 
+    const newBuyer = {
+      address: self.state.currentUserAddress,
+      movieId: self.state.currentMovie.id,
+      timeStamp: Date.now()
+    };
+
     nos
-      .getAddress()
-      .then(currentUserNEOAddress => {
-        nos
-          .getBalance({ asset: GAS })
-          .then(balance => {
-            console.log(`Balance ${balance}`);
-            if (balance >= movieTicketPriceInGAS) {
-              this.props.nos
-                .send({
-                  asset: GAS,
-                  amount: movieTicketPriceInGAS,
-                  receiver: movieTicketShopAddress
-                })
-                .then(() => {
-                  // store purchaser's data
-                  nos
-                    .getStorage(buyerListHash)
-                    .then(async dataHash => {
-                      ipfsConnection.get(dataHash, (err, res) => {
-                        if (err || !res)
-                          return console.error("Error while getting data from ipfs", err, res);
+      .getBalance({ asset: GAS })
+      .then(balance => {
+        console.log(`Balance ${balance}`);
+        if (balance >= movieTicketPriceInGAS) {
+          this.props.nos
+            .send({
+              asset: GAS,
+              amount: movieTicketPriceInGAS,
+              receiver: movieTicketShopAddress
+            })
+            .then(() => {
+              // store purchaser's data
+              nos
+                .getStorage(buyerListHash)
+                .then(async dataHash => {
+                  // {address: [{address, movieId, timeStamp}, {address,movieId, timeStamp}]}
+                  // currentUserBoughtTickets = []
+                  // currentUserBoughtTickets.filter((x) => x.movieId === currentMovie).count -> You have bought ${count} tickets of this movie.
+                  // mvies[address] = [{newBuyer}]
+                  // movies[addres].push(newBuyer)
 
-                        let buyers = JSON.parse(res[0].content.toString("utf8"));
-                        buyers.push({
-                          address: currentUserNEOAddress,
-                          movieId: self.state.currentMovie.id
-                        });
+                  console.log(`We can get storage ${dataHash}`);
+                  ipfsConnection.get(dataHash, (err, res) => {
+                    if (err || !res)
+                      return console.error("Error while getting data from ipfs", err, res);
 
-                        // update smart contract storage
-                          this.storeBuyers(buyers, nos, function() {
-                            alert("Thanks for booking the movie ticket!")
-                          })
+                    const buyers = JSON.parse(res[0].content.toString("utf8"));
+
+                    console.log(`buyers${buyers}`);
+
+                    const currentUserBoughtTickets = buyers[newBuyer.address];
+                    if (typeof currentUserBoughtTickets !== "undefined") {
+                      buyers[newBuyer.address].push(newBuyer);
+                    } else {
+                      buyers[newBuyer.address] = [newBuyer];
+                    }
+
+                    console.log(`We can get storage ${buyers}`);
+
+                    // update smart contract storage
+                    this.storeBuyers(buyers, nos, () => {
+                      self.setState({
+                        currentTicketBoughtCount: self.state.currentTicketBoughtCount + 1
                       });
-                    })
-                    .catch(err => {
-                      alert(
-                        "There is something wrong with the server. We will get back to you as soon as possible."
-                      );
-                      console.log(`Cannot get storage from NEO, error:${err}`);
+                      alert("Thanks for booking the movie ticket!");
                     });
+                  });
                 })
-                .catch(() => {
-                  ToastStore.error("Purchase Failed");
-                  // self.history.push('/');
+                .catch(err => {
+                  // unidentified data or network error
+
+                  const buyers = {};
+                  buyers[newBuyer.address] = [newBuyer];
+
+                  this.storeBuyers(buyers, nos, () => {
+                    alert("Thanks for booking the movie ticket!");
+                  });
+
+                  // alert(
+                  //   "There is something wrong with the server. We will get back to you as soon as possible."
+                  // );
+                  console.log(`Cannot get storage from NEO, error:${err}`);
                 });
-            } else {
-              alert(`You don't have enough NEO to purchase this ticket.`);
-            }
-          })
-          .catch(err => {
-            console.log(`Error while getting user's balance ${err}`);
-          });
-        console.log(`User address${currentUserNEOAddress}`);
+            })
+            .catch(() => {
+              ToastStore.error("Purchase Failed");
+              // self.history.push('/');
+            });
+        } else {
+          alert(`You don't have enough NEO to purchase this ticket.`);
+        }
       })
       .catch(err => {
-        console.log("Cannot get user Address");
+        console.log(`Error while getting user's balance ${err}`);
       });
+    //   console.log(`User address${currentUserNEOAddress}`);
+    // })
+    // .catch(err => {
+    //   console.log("Cannot get user Address");
+    // });
   }
 
   render() {
     console.log(`render HomePage  ${this.props.nos.exists}`);
     if (!this.props.nos.exists) {
       return null;
+    }
+
+    // check if currentuserAddress = ""
+    if (this.state.currentMovie && this.state.currentUserAddress === null) {
+      console.log("setCurrentUserTickets");
+      this.setCurrentUserTickets(this, this.state.currentMovie);
     }
 
     const movies = this.state.movies;
@@ -566,7 +670,7 @@ class App extends Component {
       height: "390",
       width: "640",
       playerVars: {
-        autoplay: 1
+        autoplay: 0
       }
     };
 
@@ -575,7 +679,7 @@ class App extends Component {
         <div>
           <div>
             <Navbar color="dark" dark expand="md">
-              <NavbarBrand href="/">Cineo: Buy movie tickets with NEO</NavbarBrand>
+              <NavbarBrand href="/">Cineo: Buy movie tickets with NEO tokens</NavbarBrand>
             </Navbar>
           </div>
 
@@ -601,6 +705,12 @@ class App extends Component {
               <p>
                 <Badge color="primary">PRICE {movieTicketPriceInGAS} GAS</Badge>
               </p>
+              <p>
+                <Badge color="warning">
+                  You have bought {this.state.currentTicketBoughtCount} tickets
+                </Badge>{" "}
+                &nbsp;
+              </p>
               <p className="lead">
                 <Button color="success" onClick={() => this.buyTicket(this.props.nos)}>
                   Buy Ticket
@@ -612,7 +722,6 @@ class App extends Component {
           <div>
             <Row>
               {movies.map(movie => {
-                console.log(`movie in loop ${movie}`);
                 if (movie) {
                   return <MovieCard movie={movie} key={movie.id + movie.title} app={this} />;
                 }

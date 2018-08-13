@@ -2,7 +2,7 @@ remove-cache:
 	rm -rf ~/Library/Application\ Support/nOS
 .PHONY: remove-cache
 
-dev-server:
+dev-server: remove-cache
 	python -m SimpleHTTPServer 1234
 .PHONY: dev-server
 
